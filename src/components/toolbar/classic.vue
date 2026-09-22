@@ -109,7 +109,7 @@
           <menus-toolbar-insert-web-page v-if="!disableMenu('web-page')" />
         </div>
         <div class="virtual-group is-slot">
-          <slot name="toolbar_insert" toolbar-mode="ribbon" />
+          <slot name="toolbar_insert" toolbar-mode="classic" />
         </div>
       </template>
       <template v-if="currentMenu === 'table'">
@@ -154,9 +154,10 @@
       </template>
       <template v-if="currentMenu === 'tools'">
         <div class="umo-virtual-group">
+          <menus-toolbar-tools-signature v-if="!disableMenu('signature')" />
+          <menus-toolbar-tools-stamp v-if="!disableMenu('stamp')" />
           <menus-toolbar-tools-qrcode v-if="!disableMenu('qrcode')" />
           <menus-toolbar-tools-barcode v-if="!disableMenu('barcode')" />
-          <menus-toolbar-tools-signature v-if="!disableMenu('signature')" />
         </div>
         <div class="umo-virtual-group">
           <menus-toolbar-tools-excalidraw

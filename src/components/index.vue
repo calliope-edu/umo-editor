@@ -59,6 +59,7 @@ import {
   isRecord,
   isString,
 } from '@tool-belt/type-predicates'
+import { AllSelection } from '@tiptap/pm/state'
 import 'dayjs/locale/de'
 import domToImage from 'dom-to-image-more'
 import enConfig from 'tdesign-vue-next/esm/locale/en_US'
@@ -74,7 +75,7 @@ import {
   redoHistoryRecord,
   undoHistoryRecord,
 } from '@/utils/history-record'
-import { getOpitons } from '@/utils/options'
+import { getOptions } from '@/utils/options'
 import { getSelectionNode, getSelectionText } from '@/utils/selection'
 import { shortId } from '@/utils/short-id'
 import { getCurrentInstance } from 'vue'
@@ -123,7 +124,7 @@ const historyRecords = ref({
 
 const container = $ref(`#umo-editor-${shortId(4)}`)
 const defaultOptions = inject('defaultOptions', {})
-const options = ref(getOpitons(props, defaultOptions))
+const options = ref(getOptions(props, defaultOptions))
 const editor = ref(null)
 const savedAt = ref(null)
 const page = ref({})
@@ -203,9 +204,12 @@ watch(
 )
 
 let toolbarKey = $ref(shortId())
+let toolbarActive = ref(null)
+provide('toolbarActive', toolbarActive)
 watch(
   () => [options.value.document?.readOnly, editor.value?.isEditable],
-  () => {
+  async () => {
+    await nextTick()
     toolbarKey = shortId()
   },
 )
@@ -216,8 +220,10 @@ onMounted(() => {
   const skin = useStorage('umo-editor:skin', options.value.skin)
   setTheme(theme.value)
   setSkin(skin.value)
+  window.addEventListener('beforeunload', handleBeforeUnload)
 })
 onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', handleBeforeUnload)
   clearAutoSaveInterval()
   destroy()
 })
@@ -255,6 +261,23 @@ watch(
 let contentUpdated = $ref(false)
 let isFirstUpdate = $ref(true)
 let autoSaveInterval = $ref(null)
+let isSaving = $ref(false)
+const shouldBlockUnload = () => {
+  if (
+    options.value.document?.readOnly === true ||
+    editor.value?.isEditable === false
+  ) {
+    return false
+  }
+  return isSaving || contentUpdated
+}
+const handleBeforeUnload = (event) => {
+  if (!shouldBlockUnload()) {
+    return
+  }
+  event.preventDefault()
+  event.returnValue = ''
+}
 const clearAutoSaveInterval = () => {
   if (autoSaveInterval !== null) {
     clearInterval(autoSaveInterval)
@@ -613,7 +636,7 @@ const localeConfig = $ref({
 // Options Setup
 const setOptions = (value) => {
   try {
-    options.value = getOpitons(value)
+    options.value = getOptions(value, defaultOptions)
     const $locale = useStorage('umo-editor:locale', options.value.locale)
     if (!$locale.value) {
       $locale.value = options.value.locale
@@ -823,7 +846,7 @@ const setContent = (
   content,
   options = {
     emitUpdate: true,
-    focusPosition: 'start',
+    focusPosition: null,
     focusOptions: { scrollIntoView: true },
   },
 ) => {
@@ -1127,12 +1150,17 @@ const saveContent = async (showMessage = true) => {
   if (options.value.document?.readOnly) {
     return
   }
+  if (editor.value) {
+    // 保存前先同步一份最新内容，避免 onSave 第三个参数读取到旧值
+    $document.value.content = editor.value.getHTML()
+  }
   const saveBack = {
     status: '', // 可选值：'success' | 'error'  // 状态描述文本（用于前端提示或日志）
     message: '', // 例如：'保存失败：网络异常'
     showMessage: true, // 是否展示message
   }
   try {
+    isSaving = true
     useMessage(
       'loading',
       {
@@ -1188,6 +1216,7 @@ const saveContent = async (showMessage = true) => {
       return
     }
     emits('saved')
+    contentUpdated = false
     if (saveBack.showMessage) {
       useMessage('success', {
         attach: container,
@@ -1209,6 +1238,8 @@ const saveContent = async (showMessage = true) => {
       })
     }
     console.error(error?.message)
+  } finally {
+    isSaving = false
   }
 }
 const getAllBookmarks = () => {
@@ -1423,7 +1454,7 @@ defineExpose({
   --td-text-color-disabled: var(--umo-text-color-disabled);
   width: 100%;
   height: 100%;
-  min-height: 400px;
+  min-height: 200px;
   display: flex;
   flex-direction: column;
   color: var(--umo-text-color);
@@ -1451,8 +1482,9 @@ defineExpose({
   }
   &.preview-mode {
     &.laser-pointer {
-      .umo-main {
-        cursor: url('@/assets/images/laser-pointer.svg'), auto;
+      .umo-main,
+      .umo-main * {
+        cursor: url('@/assets/images/laser-pointer.svg'), auto !important;
       }
     }
     .umo-toolbar {

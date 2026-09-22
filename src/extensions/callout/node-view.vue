@@ -17,6 +17,7 @@
           color: attrs.fontColor,
           backgroundColor: attrs.backgroundColor,
         }"
+        @mousedown="focusCalloutContent"
       >
         <span
           v-if="attrs.icon"
@@ -49,6 +50,9 @@
 
 <script setup>
 import { NodeViewContent, nodeViewProps, NodeViewWrapper } from '@tiptap/vue-3'
+
+import { safeOffsetPos } from '@/utils/position'
+
 const props = defineProps(nodeViewProps)
 const attrs = $computed(() => props.node.attrs)
 const { updateAttributes } = props
@@ -61,6 +65,25 @@ const selectEmoji = (emoji) => {
     icon: emoji,
   })
 }
+
+const focusCalloutContent = (event) => {
+  if (!props.editor?.isEditable || event.button !== 0) {
+    return
+  }
+  const { target } = event
+  if (!(target instanceof HTMLElement)) {
+    return
+  }
+  // 点击文本区域时保留原生定位行为；仅为空白区域提供兜底聚焦。
+  if (target.closest('.umo-node-callout-content')) {
+    return
+  }
+  const pos = safeOffsetPos(props.getPos, props.editor?.state, 1)
+  if (typeof pos !== 'number') {
+    return
+  }
+  props.editor.chain().focus().setTextSelection(pos).run()
+}
 </script>
 
 <style lang="less">
@@ -71,16 +94,18 @@ const selectEmoji = (emoji) => {
   width: 100%;
   border: 1px solid rgba(0, 0, 0, 0.2);
   box-sizing: border-box;
-  align-items: center;
+  align-items: flex-start;
   &-icon {
     font-size: 18px;
     margin-right: 10px;
+    line-height: 1.25;
   }
   &-content {
     flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    min-height: 1em;
+    cursor: text;
+    white-space: pre-wrap;
+    word-break: break-word;
 
     &.umo-node-callout-empty {
       display: flex;
@@ -88,6 +113,7 @@ const selectEmoji = (emoji) => {
       &::after {
         content: attr(data-placeholder);
         opacity: 0.5;
+        pointer-events: none;
       }
       .tiptap-invisible-character {
         display: none;

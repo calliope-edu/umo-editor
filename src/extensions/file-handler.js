@@ -1,5 +1,6 @@
 import { Extension } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
+import { isOfficeLikeClipboardData } from './office-paste/utils'
 
 const FileHandlePlugin = (option) => {
   const { key, editor, onPaste, onDrop, allowedMimeTypes } = option
@@ -9,10 +10,10 @@ const FileHandlePlugin = (option) => {
       handleDrop(view, event) {
         const { dataTransfer } = event
         if (!onDrop) {
-          return
+          return false
         }
         if (!dataTransfer?.files.length) {
-          return
+          return false
         }
         const pos = view.posAtCoords({
           left: event.clientX,
@@ -29,20 +30,30 @@ const FileHandlePlugin = (option) => {
         }
         if (files.length !== 0) {
           onDrop(editor, files, pos === null ? undefined : pos.pos)
+          event.preventDefault()
+          event.stopPropagation()
+          return true
         }
-        event.preventDefault()
-        event.stopPropagation()
+        return false
       },
-      handlePaste(view, event) {
+      handlePaste(_view, event) {
         const { clipboardData } = event
+        if (event.skipFileHandler) {
+          return false
+        }
+        if (isOfficeLikeClipboardData(clipboardData)) {
+          return false
+        }
         if (!onPaste) {
-          return
+          return false
         }
         if (!clipboardData?.files.length) {
-          return
+          return false
         }
         let files = Array.from(clipboardData.files)
         const html = clipboardData.getData('text/html')
+        const hasHtmlContent = String(html || '').trim() !== ''
+        const hasHtmlImages = /<img\b/i.test(String(html || ''))
         if (allowedMimeTypes.length > 0) {
           files = files.filter((item) => {
             if (allowedMimeTypes.includes(item.type)) {
@@ -52,10 +63,20 @@ const FileHandlePlugin = (option) => {
           })
         }
         if (files.length !== 0) {
+          if (hasHtmlContent) {
+            if (!hasHtmlImages) {
+              setTimeout(() => {
+                onPaste(editor, files, html)
+              }, 0)
+            }
+            return false
+          }
           onPaste(editor, files, html)
+          event.preventDefault()
+          event.stopPropagation()
+          return true
         }
-        event.preventDefault()
-        event.stopPropagation()
+        return false
       },
     },
   })

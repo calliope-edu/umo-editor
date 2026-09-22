@@ -4,7 +4,7 @@
     ref="containerRef"
     class="umo-node-view"
     :style="nodeStyle"
-    @click.capture="editor?.commands.setNodeSelection(getPos())"
+    @click.capture="clickCapture"
   >
     <div
       class="umo-node-container hover-shadow umo-select-outline umo-node-file"
@@ -87,7 +87,14 @@ import { isAsyncFunction, isFunction } from '@tool-belt/type-predicates'
 import { nodeViewProps, NodeViewWrapper } from '@tiptap/vue-3'
 import prettyBytes from 'pretty-bytes'
 
-import { getFileExtname, getFileIcon } from '@/utils/file'
+import { safeNodePos, selectNodePos } from '@/utils/position'
+import {
+  fileNodeTypes,
+  getFileExtname,
+  getFileIcon,
+  scheduleFileDelete,
+  urlAttrs,
+} from '@/utils/file'
 
 import { updateAttributesWithoutHistory } from './'
 
@@ -120,6 +127,10 @@ const fileIcon = $computed(() => {
 let previewModal = $ref(false)
 let previewURL = $ref(null)
 
+const clickCapture = () => {
+  selectNodePos(editor.value, getPos)
+}
+
 const getPreviewInfo = () => {
   const { preview } = options.value.file
   const extname = getFileExtname(attrs.name)
@@ -144,10 +155,11 @@ onMounted(async () => {
       const result = await options.value?.onFileUpload?.(file)
       const { id, url } = result
       if (containerRef.value) {
+        const pos = safeNodePos(getPos, editor.value?.state)
         updateAttributesWithoutHistory(
           editor.value,
           { id, url, uploaded: true },
-          getPos(),
+          pos,
         )
       }
       uploadFileMap.value.delete(attrs.id)
@@ -159,10 +171,19 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  setTimeout(() => {
-    if (editor.value.isDestroyed) return
-    options.value.onFileDelete(attrs.id, attrs.src, `image:${attrs.type}`)
-  }, 500)
+  scheduleFileDelete({
+    editor,
+    options,
+    fileNode: {
+      id: attrs.id,
+      src: attrs.src,
+      url: attrs.url,
+      type: attrs.type,
+      position: safeNodePos(getPos, editor.value?.state),
+    },
+    nodeTypes: fileNodeTypes,
+    matchSourceAttrs: urlAttrs,
+  })
 })
 
 const supportPreview = $computed(() => {
@@ -273,7 +294,8 @@ const togglePreview = () => {
 .umo-file-preview-modal {
   padding: 0 !important;
   overflow: hidden;
-  .umo-dialog {
+  .umo-dialog,
+  .t-dialog {
     &__header {
       display: none !important;
     }

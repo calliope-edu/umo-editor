@@ -680,6 +680,15 @@ export default new ObjectSchema({
     },
     required: false,
   },
+  onMentionSearch: {
+    merge: 'replace',
+    validate(value) {
+      if (value !== null && !isAsyncFunction(value)) {
+        throw new Error('Key "onMentionSearch" must be a async function.')
+      }
+    },
+    required: false,
+  },
   extensions: {
     merge: 'replace',
     validate: 'array',
