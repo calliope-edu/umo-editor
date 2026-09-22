@@ -38,7 +38,16 @@
       "all": "Häufige Schriftarten",
       "recent": "Zuletzt verwendet",
       "used": "Verwendete Schriftarten",
-      "unsupport": "Diese Schriftart wird möglicherweise nicht richtig angezeigt, da sie auf diesem Gerät nicht installiert ist."
+      "unsupport": "Diese Schriftart wird möglicherweise nicht richtig angezeigt, da sie auf diesem Gerät nicht installiert ist.",
+      "download": "Herunterladen",
+      "downloading": "Wird heruntergeladen",
+      "downloadActionTip": "Schriftart herunterladen und in diesem Browser aktivieren",
+      "downloadStart": "{font} wird heruntergeladen und nach Abschluss automatisch aktiviert",
+      "autoDownloadStart": "Die für dieses Dokument benötigten Schriftarten werden heruntergeladen",
+      "autoDownloadDone": "Die benötigten Schriftarten wurden heruntergeladen",
+      "downloadSuccess": "{font} wurde heruntergeladen und aktiviert",
+      "downloadFailed": "{font} konnte nicht heruntergeladen werden, bitte versuchen Sie es später erneut",
+      "noDownloadUrl": "Für diese Schriftart ist keine Download-Adresse hinterlegt"
     },
     "fontSize": {
       "text": "Schriftgröße",
@@ -197,12 +206,15 @@
     "template": "Vorlage",
     "textBox": "Textfeld",
     "toc": "Inhaltsverzeichnis",
+    "newline": "Neue Zeile einfügen",
     "video": "Video",
     "web": {
       "text": "Webseite",
       "insert": "Einfügen",
       "title": "Webseite einfügen",
       "tip": "Einige Webseiten unterstützen möglicherweise keine Einbettung.",
+      "invalidUrl": "Bitte geben Sie eine gültige Webadresse ein oder prüfen Sie das Linkformat der gewählten Plattform.",
+      "insertError": "Die Webseite konnte nicht eingefügt werden. Bitte prüfen Sie den Link und versuchen Sie es erneut.",
       "type": "Link-Typ:",
       "url": "Seiten-URL:",
       "placeholder": "Geben Sie eine Webadresse ein, beginnend mit http:// oder https://"
@@ -419,13 +431,49 @@
     "signature": {
       "text": "E-Signatur",
       "title": "Elektronische Signatur einfügen",
+      "tabs": {
+        "online": "Online unterschreiben",
+        "select": "Signatur auswählen"
+      },
       "clear": "Leeren",
       "lineWidth": "Stiftstärke",
       "lineColor": "Stiftfarbe",
       "smooth": "Pinselstriche anzeigen",
       "reset": "Optionen zurücksetzen",
       "tip": "Bitte unterschreiben Sie in diesem Bereich",
-      "notEmpty": "Keine Signatur erkannt"
+      "notEmpty": "Keine Signatur erkannt",
+      "selectLocal": "Signaturbild hochladen",
+      "reselect": "Anderes auswählen",
+      "selectEmpty": "Bitte wählen Sie zuerst ein Signaturbild aus",
+      "cropTitle": "Signatur zuschneiden",
+      "cropTip": "Ziehen Sie den Zuschneiderahmen und den Auswahlbereich, um den sichtbaren Ausschnitt anzupassen.",
+      "fileSize": "Dateigröße",
+      "imageSize": "Bildabmessungen",
+      "unknownDimensions": "Abmessungen unbekannt",
+      "cropFailed": "Die Signatur konnte nicht zugeschnitten werden"
+    },
+    "stamp": {
+      "text": "E-Stempel",
+      "title": "Stempel einfügen",
+      "presetTitle": "Stempelgrößen-Vorlagen",
+      "presets": {
+        "company": "Firmenstempel",
+        "contract": "Vertragsstempel",
+        "finance": "Finanzstempel",
+        "invoice": "Rechnungsstempel",
+        "legal": "Stempel des gesetzlichen Vertreters",
+        "customs": "Zollstempel",
+        "other": "Sonstige"
+      },
+      "previewTitle": "Stempel-Vorschau",
+      "previewTip": "Ziehen Sie den Zuschneiderahmen und den Auswahlbereich, um den sichtbaren Ausschnitt anzupassen.",
+      "selectLocal": "Stempelbild hochladen",
+      "reselect": "Anderes auswählen",
+      "selectEmpty": "Bitte wählen Sie zuerst ein Stempelbild aus",
+      "fileSize": "Dateigröße",
+      "imageSize": "Bildabmessungen",
+      "unknownDimensions": "Abmessungen unbekannt",
+      "notEmpty": "Bitte laden Sie zuerst ein Stempelbild hoch"
     }
   },
   "page": {
@@ -527,6 +575,13 @@
       "text": "Nummerierte Liste",
       "property": "Listeneigenschaften",
       "startAt": "Startnummer:",
+      "continuePrevious": "Vorherige Nummerierung fortsetzen",
+      "startNew": "Neue Liste beginnen",
+      "changeStart": "Nummerierungswert festlegen",
+      "numberType": "Nummerierungsart",
+      "startValue": "Nummerierungswert",
+      "apply": "Übernehmen",
+      "cancel": "Abbrechen",
       "decimal": "Zahlen",
       "decimalLeadingZero": "Zahlen mit führender Null",
       "lowerRoman": "Römische Ziffern (Kleinbuchstaben)",
@@ -579,13 +634,18 @@
       "download": "Datei herunterladen"
     },
     "image": {
+      "crop": "Bild zuschneiden",
+      "applyCrop": "Zuschnitt übernehmen",
+      "cropFailed": "Bild konnte nicht zugeschnitten werden",
       "open": "In einem neuen Fenster öffnen",
       "draggable": "Bild schwebend",
       "flipX": "Horizontal spiegeln",
       "flipY": "Vertikal spiegeln",
       "preview": "Bildvorschau",
       "proportion": "Seitenverhältnis sperren",
+      "title": "Bildbeschreibung anzeigen",
       "reset": "Bildposition zurücksetzen",
+      "resetAll": "Alle Einstellungen zurücksetzen",
       "rotateCC": "Um 90° gegen den Uhrzeigersinn drehen",
       "rotateC": "Um 90° im Uhrzeigersinn drehen",
       "convertToNode": "In Block-Bild konvertieren",
@@ -641,7 +701,8 @@
     }
   },
   "document": {
-    "untitled": "Unbenanntes Dokument"
+    "untitled": "Unbenanntes Dokument",
+    "headingPlaceholder": "Titel eingeben"
   },
   "search": {
     "text": "Suchen",
@@ -754,7 +815,8 @@
     },
     "image": {
       "loading": "Bild wird geladen...",
-      "error": "Bild konnte nicht geladen werden"
+      "error": "Bild konnte nicht geladen werden",
+      "altPlaceholder": "Bildbeschreibung eingeben"
     },
     "textBox": {
       "tip": "Doppelklicken zum Bearbeiten"
@@ -776,6 +838,7 @@
     "placeholder": "Bitte Inhalt eingeben"
   },
   "mention": {
+    "loading": "Wird gesucht",
     "noResult": "Keine Ergebnisse"
   },
   "save": {
@@ -812,5 +875,12 @@
   "copy": {
     "notSupported": "Der Browser unterstützt die Kopierfunktion nicht",
     "copyFailed": "Kopieren fehlgeschlagen"
+  },
+  "officePaste": {
+    "imagePlaceholder": "[Bild]",
+    "dialog": {
+      "title": "Hinweis",
+      "body": "Der Inhalt der Zwischenablage wurde eingefügt, enthaltene Bilder konnten jedoch nicht korrekt verarbeitet werden. Bitte kopieren Sie die betroffenen Bilder manuell und ersetzen Sie sie im Dokument."
+    }
   }
 }
