@@ -61,8 +61,12 @@ the campus validates the frame origin (derived from the configured URL).
 
 ## Collaborative editing (Yjs)
 
-The editor itself never opens a connection. It takes a ready-made `Y.Doc` — and,
-for remote carets, a provider — through the `collaboration` option, so any
+Implements P7 of the campus design record
+(`calliope-campus/docs/design/2026-teilen-modi.md` §7) — the `live-write`
+("Live gemeinsam") share mode.
+
+The editor core never opens a connection. It takes a ready-made `Y.Doc` — and,
+for remote carets, a provider — through a `collaboration` option, so any
 y-provider works:
 
 ```js
@@ -79,55 +83,83 @@ y-provider works:
 }
 ```
 
-What changes when it is on:
+`src/app.vue` is the layer above it: it turns the campus's
+`{ wsUrl, docName, token, field, canWrite, user }` into that option by opening a
+Hocuspocus connection itself (`@hocuspocus/provider`, lazily imported — it lands
+in its own ~31 kB chunk, so non-collaborative builds do not pay for it).
+
+What changes when a document is shared:
 
 - The Y.Doc is the source of truth, so `document.content` is **not** passed to
   Tiptap at construction. It is applied after the first sync, and only if no
-  other client has ever written to the room — otherwise every joining client
-  would append the document again. "Has anyone written here" is read off the
-  Y.Doc's state vector, not off the fragment: binding the editor to an empty
-  Y.Doc immediately writes a trailing paragraph, so the fragment is never empty
-  by the time sync completes.
+  other client has ever written to the document — otherwise every joining client
+  would append it again. "Has anyone written here" is read off the Y.Doc's state
+  vector, not off the fragment: binding the editor to an empty Y.Doc immediately
+  writes a trailing paragraph, so the fragment is never empty by the time sync
+  completes.
 - Tiptap's `UndoRedo` extension is swapped for `Collaboration`'s Yjs
   `UndoManager` (running both would corrupt the shared history). The toolbar's
   undo/redo keeps working: `src/utils/collaboration.js` translates the
   UndoManager's stacks into the shape the custom history recorder expects.
-- The status bar shows who else is in the room
+- `canWrite: false` (a `live-read` recipient) forces `document.readOnly`. The
+  sync server enforces it too; this only stops the caret from blinking.
+- The status bar shows who else is in the document
   (`src/components/statusbar/collaborators.vue`).
 
 The Y.Doc and provider are `markRaw`'d. This matters: `options` is a deep `ref`,
 so without it Vue would wrap the CRDT in a reactive proxy and every deep watcher
-would walk the whole document on each keystroke.
+would walk the whole document on each keystroke. They also live outside the
+`<umo-editor>` component, so the remount a locale change triggers does not tear
+the session down.
 
 ### Campus side
 
-`umo:init` may carry a `collaboration` block; the frame then opens its own
-Hocuspocus connection (`@hocuspocus/provider`, lazily imported):
-
 ```js
-postToFrame('umo:init', {
+postToFrame('umo:coop-init', {
   key: programKey,
-  content,
-  collaboration: {
-    url: 'wss://campus-ws.calliope.cc',  // PUBLIC_HP_URL
-    room: documentName,                  // same name the campus uses elsewhere
-    token,                               // JWT from src/lib/server/hocuspocusToken.ts
-    user: { id, name },
-  },
+  wsUrl: PUBLIC_HP_URL,                  // wss://campus-ws.calliope.cc
+  docName: `${roomId}/share:${shareId}`, // makeShareDocName()
+  token,                                 // /api/hocuspocus-token, scoped to share:<id>
+  field: 'prose',                        // top-level fragment (P7, Entscheidung 2)
+  canWrite: true,
+  user: { id, name, color },
 })
 ```
 
-While a room is connected:
+- `umo:update-content` is **ignored** while a document is connected — replaying
+  the host's copy into a live CRDT would insert it a second time.
+- `umo:changed` keeps firing, but it is now the *derived snapshot*, not the
+  truth. It also fires for other people's edits, so it is coalesced to one
+  message per 1.5 s idle (6 s ceiling during continuous typing); otherwise the
+  host's snapshot writes would multiply by the number of people in the document.
+  Flushed on `pagehide`, `visibilitychange` and before `umo:saved`. The payload
+  carries `collaborative: true` and `docName`.
+- Tokens expire after an hour (`HOCO_TOKEN_TTL_MS`). The frame hands Hocuspocus
+  a token *getter*, so before any (re)connect with a token older than 45 minutes
+  it emits `umo:coop-token-needed` and waits up to 5 s for a `umo:coop-token`
+  reply (falling back to the stale token, which surfaces as `auth-failed`).
+- `umo:coop-state` reports `{ docName, state }` with `state` one of
+  `connecting` · `connected` · `synced` · `disconnected` · `auth-failed` ·
+  `error`.
+- `umo:coop-stop` leaves the document and returns the frame to single-player.
 
-- `umo:update-content` is **ignored** — replaying the host's copy into a live
-  CRDT would overwrite what the other participants just typed. Send a
-  `collaboration` block on `umo:update-props` to switch rooms instead.
-- `umo:changed` keeps firing (so the campus can still snapshot to PocketBase)
-  but now also fires for other people's edits, and is coalesced to one message
-  per 1.5 s idle (6 s ceiling during continuous typing) — otherwise the host's
-  snapshot writes would multiply by the number of people in the room. The
-  payload carries `collaborative: true` and `room`. Pending changes are flushed
-  on `pagehide`, `visibilitychange` and before `umo:saved`.
-- `umo:collab-status` reports `{ room, status }` with `status` one of
-  `connecting` · `connected` · `disconnected` · `synced` · `error` ·
-  `auth-failed`.
+Everything the frame sends after the first inbound campus message goes to that
+message's origin rather than `'*'` — awareness carries pupils' real names, and
+tokens travel the other way. `event.origin` is what gets pinned, not a payload
+field, because the browser sets it and a page cannot forge it.
+
+### Deviations from the P7 spec
+
+- **The version history is kept, not disabled.** The spec proposed switching it
+  off under collaboration because `editor.state.history$` no longer exists.
+  Translating the Yjs `UndoManager`'s stacks into the same shape turned out to
+  be a few lines and leaves undo/redo genuinely working, which is better than
+  removing the button.
+- **Seeding is decided by the state vector, not by "is the fragment empty".**
+  The spec's condition cannot work as written: binding the editor to an empty
+  Y.Doc writes a trailing paragraph before sync completes, so the fragment is
+  never empty at the moment it would be tested.
+- **`UndoRedo` was not moved into the named `extensions` map.** It is selected
+  between inline instead, so it stays un-disableable through `disableExtensions`
+  for non-collaborative users — the spec's route would have made it possible to
+  switch undo off by accident.

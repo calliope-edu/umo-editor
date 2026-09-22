@@ -10,18 +10,33 @@
   Built for hosting via `pnpm build:campus` (→ dist/, base '/') on Cloudflare
   Pages, and served locally on :4174 via `pnpm dev:campus`.
 
-  Protocol (campus ⇄ iframe), scoped by the `?instance=` query param:
-    campus → iframe (source 'calliope-campus'):    umo:init | umo:update-content | umo:update-props
-    iframe → campus (source 'calliope-campus-umo'): umo:ready | umo:changed | umo:saved
-                                                   | umo:collab-status
-  content is { html, json, text, version }.
+  Protocol (campus ⇄ iframe), scoped by the `?instance=` query param. Message
+  names follow docs/design/2026-teilen-modi.md §7 (P7) in the campus repo:
 
-  Collaborative mode: when `umo:init` carries a `collaboration` block
-  ({ url, room, token, parameters, user }) the frame opens its own Hocuspocus
-  connection and the Y.Doc becomes the source of truth. `payload.content` then
-  only seeds the room if nobody has ever written to it, and `umo:update-content`
-  is ignored — pushing host content into a live CRDT would clobber other
-  people's edits. `umo:changed` keeps firing so the campus can still snapshot.
+    campus → iframe   (source 'calliope-campus')
+      umo:init            single-player start, carries the content
+      umo:update-content  new content from the host (ignored while collaborating)
+      umo:update-props    locale / readonly / disabled extensions
+      umo:coop-init       join a shared document
+      umo:coop-token      a fresh token, in reply to umo:coop-token-needed
+      umo:coop-stop       leave the shared document
+
+    iframe → campus   (source 'calliope-campus-umo')
+      umo:ready              the editor is up
+      umo:changed           derived snapshot { html, json, text, version }
+      umo:saved             the same, on explicit save
+      umo:coop-state        connecting · synced · disconnected · auth-failed · error
+      umo:coop-token-needed the current token is about to expire
+
+  Collaborative mode: on `umo:coop-init` the frame opens its OWN Hocuspocus
+  connection (P7, Entscheidung 1) and the Y.Doc becomes the truth. The campus
+  sends no content, and `umo:update-content` is ignored — a setContent would
+  insert the document a second time. `umo:changed` keeps flowing, but it is now
+  the derived snapshot rather than the source of truth.
+
+  Everything after the first inbound campus message is posted to that message's
+  origin, not '*': awareness carries pupils' real names, and the token travels
+  the other way.
 -->
 <template>
   <div class="umo-shell">
@@ -49,109 +64,39 @@ const hasReceivedInit = ref(false)
 
 const options = ref(createDefaultOptions())
 
-// Hocuspocus session state. Kept outside `options` on purpose — only the
-// resolved Y.Doc/provider go in there (already markRaw'd), never this bookkeeping.
-const collabRoom = ref('')
-let collabSession = null
-let collabConfig = null
+// Shared-document (coop) state. Deliberately outside `options`: only the
+// resolved Y.Doc/provider go in there, and those are markRaw'd so Vue never
+// proxies the CRDT. Keeping this here also means the session survives the
+// `editorRenderKey` remounts a locale change triggers (P7, Wrapper note 2).
+const coopDocName = ref('')
+let coopSession = null
+let coopConfig = null
+let coopToken = ''
+let coopTokenIssuedAt = 0
+let coopTokenWaiters = []
 
-const editorRenderKey = computed(() => {
-  const disabled = Array.isArray(options.value.disableExtensions)
-    ? [...options.value.disableExtensions].sort().join(',')
-    : ''
+// The token route mints one-hour tokens (HOCO_TOKEN_TTL_MS). Ask for a new one
+// well before that so a reconnect never races the expiry.
+const COOP_TOKEN_REFRESH_AFTER_MS = 45 * 60 * 1000
+const COOP_TOKEN_WAIT_MS = 5000
 
-  return [
-    options.value.editorKey || 'calliope-campus-umo',
-    options.value.locale || 'en-US',
-    disabled,
-    // A new room means a new Y.Doc, and the editor binds its Y.Doc once at
-    // construction — so a room switch has to remount the editor.
-    collabRoom.value || '',
-  ].join('::')
-})
-
-function createDefaultOptions() {
-  return {
-    editorKey: 'calliope-campus-umo',
-    locale: 'en-US',
-    height: '100%',
-    fullscreenZIndex: 30,
-    toolbar: {
-      showSaveLabel: false,
-    },
-    disableExtensions: [],
-    page: {
-      layouts: ['page', 'web'],
-      showBreakMarks: false,
-      showToc: false,
-    },
-    document: {
-      title: 'Untitled',
-      content: '<p></p>',
-      readOnly: false,
-      autofocus: false,
-      enableMarkdown: true,
-      enableBubbleMenu: true,
-      enableBlockMenu: true,
-      autoSave: {
-        enabled: false,
-      },
-    },
-    // editor-external assets (fonts, templates, page backgrounds). Pinned to the
-    // @umoteam/editor-external version this fork depends on (see package.json).
-    cdnUrl: 'https://unpkg.com/@umoteam/editor-external@10.1.0',
-    shareUrl: window.location.origin,
-    user: {
-      id: 'calliope-campus',
-      label: 'Calliope Campus',
-    },
-    collaboration: {
-      enabled: false,
-      document: null,
-      provider: null,
-    },
-    async onSave() {
-      postToParent('umo:saved', { content: serializeContent() })
-      return true
-    },
-    async onFileUpload(file) {
-      if (!file) {
-        throw new Error('No file found to upload')
-      }
-
-      return {
-        id: crypto.randomUUID(),
-        url: file.url || URL.createObjectURL(file),
-        name: file.name,
-        type: file.type,
-        size: file.size,
-      }
-    },
-    onFileDelete(id, url) {
-      if (typeof url === 'string' && url.startsWith('blob:')) {
-        URL.revokeObjectURL(url)
-      }
-      console.debug('Deleted file from Umo editor', id, url)
-    },
-  }
-}
-
-function normalizeCollaborationPayload(value) {
-  if (!value || typeof value !== 'object' || !value.url || !value.room) {
+function normalizeCoopPayload(value) {
+  if (!value || typeof value !== 'object') {
     return null
   }
-
+  const wsUrl = String(value.wsUrl || '')
+  const docName = String(value.docName || '')
+  if (!wsUrl || !docName) {
+    return null
+  }
   return {
-    url: String(value.url),
-    room: String(value.room),
-    token: value.token ? String(value.token) : '',
-    parameters:
-      value.parameters && typeof value.parameters === 'object'
-        ? value.parameters
-        : undefined,
+    wsUrl,
+    docName,
+    // Top-level fragment name. `prose` is the campus default (P7,
+    // Entscheidung 2) — nested fragments race two clients into two fragments.
     field:
-      typeof value.field === 'string' && value.field ? value.field : 'default',
-    showCarets: value.showCarets !== false,
+      typeof value.field === 'string' && value.field ? value.field : 'prose',
+    canWrite: value.canWrite !== false,
     user:
       value.user && typeof value.user === 'object'
         ? value.user
@@ -159,18 +104,69 @@ function normalizeCollaborationPayload(value) {
   }
 }
 
-function sameCollaborationTarget(a, b) {
-  if (!a || !b) {
-    return a === b
-  }
-  return a.url === b.url && a.room === b.room && a.token === b.token
+function sameCoopTarget(a, b) {
+  return Boolean(a && b && a.wsUrl === b.wsUrl && a.docName === b.docName)
 }
 
-function destroyCollaborationSession() {
-  const session = collabSession
-  collabSession = null
-  collabConfig = null
-  collabRoom.value = ''
+function setCoopToken(token) {
+  const next = String(token || '')
+  if (!next) {
+    return
+  }
+  coopToken = next
+  coopTokenIssuedAt = Date.now()
+  const waiters = coopTokenWaiters
+  coopTokenWaiters = []
+  for (const waiter of waiters) {
+    clearTimeout(waiter.timer)
+    waiter.resolve(coopToken)
+  }
+}
+
+// Handed to the provider as a *function*, which Hocuspocus awaits on every
+// (re)connect — that is the hook the refresh hangs off.
+async function resolveCoopToken() {
+  const isFresh = Date.now() - coopTokenIssuedAt < COOP_TOKEN_REFRESH_AFTER_MS
+  if (coopToken && isFresh) {
+    return coopToken
+  }
+
+  postToParent('umo:coop-token-needed', { docName: coopConfig?.docName || '' })
+
+  return await new Promise((resolve) => {
+    const waiter = {
+      resolve,
+      timer: setTimeout(() => {
+        coopTokenWaiters = coopTokenWaiters.filter((item) => item !== waiter)
+        // Better a stale token the server will reject (surfacing as
+        // `auth-failed`) than a connection that never gets attempted.
+        resolve(coopToken)
+      }, COOP_TOKEN_WAIT_MS),
+    }
+    coopTokenWaiters.push(waiter)
+  })
+}
+
+function postCoopState(state, extra = {}) {
+  postToParent('umo:coop-state', {
+    docName: coopConfig?.docName || coopDocName.value || '',
+    state,
+    ...extra,
+  })
+}
+
+function stopCoopSession() {
+  const session = coopSession
+  coopSession = null
+  coopConfig = null
+  coopToken = ''
+  coopTokenIssuedAt = 0
+  for (const waiter of coopTokenWaiters) {
+    clearTimeout(waiter.timer)
+    waiter.resolve('')
+  }
+  coopTokenWaiters = []
+  coopDocName.value = ''
   options.value = {
     ...options.value,
     collaboration: { enabled: false, document: null, provider: null },
@@ -182,52 +178,49 @@ function destroyCollaborationSession() {
   }
 }
 
-async function startCollaborationSession(config) {
-  if (collabSession) {
-    destroyCollaborationSession()
+async function startCoopSession(config, token) {
+  if (coopSession) {
+    stopCoopSession()
   }
 
+  coopConfig = config
+  setCoopToken(token)
+  postCoopState('connecting')
+
   try {
-    collabSession = await createHocuspocusSession({
-      url: config.url,
-      name: config.room,
-      token: config.token,
-      parameters: config.parameters,
+    coopSession = await createHocuspocusSession({
+      url: config.wsUrl,
+      name: config.docName,
+      token: resolveCoopToken,
       onStatus: (status) =>
-        postToParent('umo:collab-status', { room: config.room, status }),
-      onSynced: () =>
-        postToParent('umo:collab-status', {
-          room: config.room,
-          status: 'synced',
-        }),
-      onAuthenticationFailed: () =>
-        postToParent('umo:collab-status', {
-          room: config.room,
-          status: 'auth-failed',
-        }),
+        postCoopState(status === 'connected' ? 'connected' : status),
+      onSynced: () => postCoopState('synced'),
+      onAuthenticationFailed: () => postCoopState('auth-failed'),
     })
   } catch (error) {
     // A failed connection must not leave the user staring at nothing: fall back
     // to the single-player editor and let the campus decide how to surface it.
-    console.error('[umo] collaboration setup failed', error)
-    postToParent('umo:collab-status', {
-      room: config.room,
-      status: 'error',
-      message: String(error?.message || error),
-    })
+    console.error('[umo] coop setup failed', error)
+    coopConfig = null
+    postCoopState('error', { message: String(error?.message || error) })
     return false
   }
 
-  collabConfig = config
-  collabRoom.value = config.room
+  coopDocName.value = config.docName
   options.value = {
     ...options.value,
+    document: {
+      ...options.value.document,
+      // A recipient of a read-only live share still joins the document; the
+      // sync server enforces it too, this just stops the caret from blinking.
+      readOnly: !config.canWrite,
+    },
     collaboration: {
       enabled: true,
-      document: collabSession.document,
-      provider: collabSession.provider,
+      document: coopSession.document,
+      provider: coopSession.provider,
       field: config.field,
-      showCarets: config.showCarets,
+      showCarets: true,
       user: config.user,
     },
   }
@@ -235,10 +228,20 @@ async function startCollaborationSession(config) {
 }
 
 function isCollaborating() {
-  return Boolean(collabSession)
+  return Boolean(coopSession)
 }
 
+// Pinned to the origin of the first campus message we accept. Until then the
+// only thing we send is `umo:ready`, which carries nothing — everything with
+// content in it (awareness names, snapshots, token requests) waits for the pin.
+let parentOrigin = ''
+
 function postToParent(type, payload = {}) {
+  if (!parentOrigin && type !== 'umo:ready') {
+    console.warn(`[umo] dropped ${type}: parent origin not pinned yet`)
+    return
+  }
+
   window.parent.postMessage(
     {
       source: 'calliope-campus-umo',
@@ -246,7 +249,7 @@ function postToParent(type, payload = {}) {
       instanceId,
       payload,
     },
-    '*',
+    parentOrigin || '*',
   )
 }
 
@@ -302,10 +305,10 @@ function serializeFrameContent(value) {
   return {
     key: options.value.editorKey,
     content: toPlainObject(value),
-    // In a shared room `changed` also fires for other people's edits, so the
-    // host can tell an autosave-worthy local change from an incoming one.
+    // While collaborating this is the DERIVED snapshot, not the truth, and it
+    // also fires for other people's edits — so say which document it came from.
     collaborative: isCollaborating(),
-    room: collabRoom.value || null,
+    docName: coopDocName.value || null,
   }
 }
 
@@ -342,7 +345,9 @@ function applyFrameState(payload, { syncContent = false } = {}) {
     document: {
       ...options.value.document,
       title,
-      readOnly: Boolean(payload.readonly),
+      // A read-only participant of a shared document stays read-only even if
+      // the host forgets to repeat it on a later `umo:update-props`.
+      readOnly: Boolean(payload.readonly) || coopConfig?.canWrite === false,
       content: syncContent
         ? normalizeIncomingContent(payload.content)
         : options.value.document.content,
@@ -380,45 +385,55 @@ function applyFrameState(payload, { syncContent = false } = {}) {
   }
 }
 
-// Reconciles the room requested by the host with the one we are connected to.
-// Returns false when a connection was requested but could not be established,
-// so the caller can still bring up the editor in single-player mode.
-async function syncCollaborationTarget(payload) {
-  const requested = normalizeCollaborationPayload(payload.collaboration)
-
-  if (!requested) {
-    if (collabSession) {
-      destroyCollaborationSession()
-    }
-    return true
-  }
-
-  if (sameCollaborationTarget(requested, collabConfig)) {
-    return true
-  }
-
-  return await startCollaborationSession(requested)
-}
-
 async function handleFrameMessage(data) {
+  const payload = data.payload || {}
+
   if (data.type === 'umo:init') {
-    await syncCollaborationTarget(data.payload || {})
-    applyFrameState(data.payload || {}, { syncContent: true })
+    applyFrameState(payload, { syncContent: true })
     return
   }
 
   if (data.type === 'umo:update-content') {
-    applyFrameState(data.payload || {}, { syncContent: true })
+    applyFrameState(payload, { syncContent: true })
     return
   }
 
   if (data.type === 'umo:update-props') {
-    // A room switch arrives here when the host moves the user to another
-    // document without tearing the iframe down.
-    if (data.payload && 'collaboration' in data.payload) {
-      await syncCollaborationTarget(data.payload || {})
+    applyFrameState(payload, { syncContent: false })
+    return
+  }
+
+  if (data.type === 'umo:coop-init') {
+    const requested = normalizeCoopPayload(payload)
+    if (!requested) {
+      postCoopState('error', {
+        message: 'umo:coop-init needs wsUrl and docName',
+      })
+      return
     }
-    applyFrameState(data.payload || {}, { syncContent: false })
+    // Re-sending the same target (a reconnect nudge, or a prop update that
+    // happens to carry it) must not tear a working session down.
+    if (!sameCoopTarget(requested, coopConfig)) {
+      await startCoopSession(requested, payload.token)
+    } else {
+      setCoopToken(payload.token)
+    }
+    // coop-init doubles as an init when the campus skips `umo:init` entirely.
+    // `syncContent` is safe here even though we are collaborating: it only
+    // parks the payload as `document.content` — the seed candidate the editor
+    // applies if and only if the document turns out to be pristine — while the
+    // `setContent` call inside is already gated on `isCollaborating()`.
+    applyFrameState(payload, { syncContent: true })
+    return
+  }
+
+  if (data.type === 'umo:coop-token') {
+    setCoopToken(payload.token)
+    return
+  }
+
+  if (data.type === 'umo:coop-stop') {
+    stopCoopSession()
   }
 }
 
@@ -429,6 +444,16 @@ function handleMessage(event) {
     data.source !== 'calliope-campus' ||
     data.instanceId !== instanceId
   ) {
+    return
+  }
+
+  // `event.origin` is set by the browser and cannot be forged, so it — not a
+  // field in the payload — is what we pin to. A later message from a different
+  // origin is a different window claiming to be the campus: drop it.
+  if (!parentOrigin) {
+    parentOrigin = event.origin
+  } else if (event.origin !== parentOrigin) {
+    console.warn(`[umo] ignored campus message from ${event.origin}`)
     return
   }
 
@@ -502,7 +527,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('pagehide', flushPendingChange)
   document.removeEventListener('visibilitychange', flushPendingChange)
   flushPendingChange()
-  destroyCollaborationSession()
+  stopCoopSession()
 })
 </script>
 
