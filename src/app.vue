@@ -97,6 +97,11 @@ function normalizeCoopPayload(value) {
     field:
       typeof value.field === 'string' && value.field ? value.field : 'prose',
     canWrite: value.canWrite !== false,
+    // Only the client the host nominates may seed, and only if it actually sent
+    // something to seed WITH. Without this every recipient would also consider
+    // itself a seeder and race an empty paragraph into a pristine document
+    // against the real content.
+    autoSeed: value.autoSeed === true && value.content !== undefined,
     user:
       value.user && typeof value.user === 'object'
         ? value.user
@@ -221,6 +226,7 @@ async function startCoopSession(config, token) {
       provider: coopSession.provider,
       field: config.field,
       showCarets: true,
+      autoSeed: config.autoSeed,
       user: config.user,
     },
   }

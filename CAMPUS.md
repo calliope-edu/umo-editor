@@ -122,9 +122,16 @@ postToFrame('umo:coop-init', {
   token,                                 // /api/hocuspocus-token, scoped to share:<id>
   field: 'prose',                        // top-level fragment (P7, Entscheidung 2)
   canWrite: true,
+  autoSeed: true,                        // nominate THIS client as the seeder
+  content,                               // the seed candidate, owner only
   user: { id, name, color },
 })
 ```
+
+Seeding is opt-in per client: the frame only seeds when `autoSeed` is true
+**and** a `content` came with it. Nominate exactly one client — otherwise every
+recipient also considers itself a seeder and races an empty paragraph into a
+pristine document against the real content.
 
 - `umo:update-content` is **ignored** while a document is connected — replaying
   the host's copy into a live CRDT would insert it a second time.
