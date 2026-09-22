@@ -841,6 +841,19 @@
     "loading": "Searching",
     "noResult": "No result"
   },
+  "collaboration": {
+    "alone": "You are the only one here",
+    "anonymous": "Anonymous",
+    "others": "Also editing",
+    "status": {
+      "connecting": "Connecting to the shared document…",
+      "connected": "Connected to the shared document",
+      "disconnected": "Disconnected — reconnecting…",
+      "synced": "Shared document is up to date",
+      "error": "Could not connect to the shared document",
+      "auth-failed": "Not allowed to open this shared document"
+    }
+  },
   "save": {
     "text": "Save",
     "saved": "Saved",

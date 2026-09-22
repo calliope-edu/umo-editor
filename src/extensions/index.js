@@ -1,4 +1,6 @@
 import Bold from '@tiptap/extension-bold'
+import Collaboration from '@tiptap/extension-collaboration'
+import CollaborationCaret from '@tiptap/extension-collaboration-caret'
 import {
   Details,
   DetailsContent,
@@ -27,6 +29,7 @@ import StarterKit from '@tiptap/starter-kit'
 
 import { l } from '@/composables/i18n'
 import { useState } from '@/composables/state'
+import { getCollaborationConfig } from '@/utils/collaboration'
 import { compressImageForEmbedding, getImageDimensions } from '@/utils/file'
 import { shortId } from '@/utils/short-id'
 
@@ -143,10 +146,7 @@ const fitImageDimensionsToWidth = (dimensions = {}, maxWidth = 0) => {
 
 const resolveInsertImageDimensions = async (editor, file) => {
   const dimensions = await getImageDimensions(file)
-  return fitImageDimensionsToWidth(
-    dimensions,
-    getEditorContentMaxWidth(editor),
-  )
+  return fitImageDimensionsToWidth(dimensions, getEditorContentMaxWidth(editor))
 }
 
 const buildEmbeddedImageNode = async (editor, file) => {
@@ -178,6 +178,7 @@ export const getDefaultExtensions = ({ container, options, uploadFileMap }) => {
     disableExtensions,
     onMentionSearch,
   } = options.value
+  const collaboration = getCollaborationConfig(options)
 
   const extensions = {
     'ordered-list': OrderedList,
@@ -249,12 +250,29 @@ export const getDefaultExtensions = ({ container, options, uploadFileMap }) => {
     TextStyleKit.configure({
       lineHeight: false,
     }),
-    UndoRedo.extend({
-      addKeyboardShortcuts() {
-        // 返回空对象表示移除所有默认快捷键
-        return {}
-      },
-    }),
+    // Yjs brings its own UndoManager through the Collaboration extension, and
+    // running both would corrupt the shared history — so only one is ever added.
+    ...(collaboration.enabled
+      ? [
+          Collaboration.extend({
+            addKeyboardShortcuts() {
+              // 返回空对象表示移除所有默认快捷键
+              return {}
+            },
+          }).configure({
+            document: collaboration.document,
+            field: collaboration.field,
+            provider: collaboration.provider,
+          }),
+        ]
+      : [
+          UndoRedo.extend({
+            addKeyboardShortcuts() {
+              // 返回空对象表示移除所有默认快捷键
+              return {}
+            },
+          }),
+        ]),
     Focus.configure({
       className: 'umo-node-focused',
       mode: 'all',
@@ -365,10 +383,13 @@ export const getDefaultExtensions = ({ container, options, uploadFileMap }) => {
         for (const file of files) {
           if (file?.type?.startsWith('image/')) {
             const imageAttrs = await buildEmbeddedImageNode(editor, file)
-            editor.commands.insertContentAt(pos || editor.state.selection.anchor, {
-              type: 'image',
-              attrs: imageAttrs,
-            })
+            editor.commands.insertContentAt(
+              pos || editor.state.selection.anchor,
+              {
+                type: 'image',
+                attrs: imageAttrs,
+              },
+            )
             continue
           }
 
@@ -406,6 +427,21 @@ export const getDefaultExtensions = ({ container, options, uploadFileMap }) => {
       UniqueID.configure({
         types: nodeTypes,
         generateID: () => shortId(10),
+      }),
+    )
+  }
+
+  // Remote carets need awareness, which lives on the provider. Without one the
+  // document still syncs — you just do not see where the others are.
+  if (
+    collaboration.enabled &&
+    collaboration.showCarets &&
+    collaboration.provider?.awareness
+  ) {
+    buildInExtensions.push(
+      CollaborationCaret.configure({
+        provider: collaboration.provider,
+        user: collaboration.user,
       }),
     )
   }

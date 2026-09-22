@@ -39,6 +39,12 @@ import { migrateMathStrings } from '@tiptap/extension-mathematics'
 import { Editor, EditorContent } from '@tiptap/vue-3'
 
 import { getDefaultExtensions, inputAndPasteRules } from '@/extensions'
+import {
+  getCollaborationConfig,
+  getEditorHistoryState,
+  isCollaborationRoomPristine,
+  onCollaborationSynced,
+} from '@/utils/collaboration'
 import { contentTransform } from '@/utils/content-transform'
 import { addHistory } from '@/utils/history-record'
 import { loadResource } from '@/utils/load-resource'
@@ -56,6 +62,9 @@ const defaultLineHeight = $computed(
 )
 
 const container = inject('container')
+// Resolved once: the Y.Doc and provider are owned by the embedder and must not
+// change under a live editor instance (`editorKey` remounts the whole editor).
+const collaboration = getCollaborationConfig(options)
 const extensions = getDefaultExtensions({
   container,
   options,
@@ -122,7 +131,12 @@ const handleEditorKeyDown = (view, event) => {
 const editorInstance = new Editor({
   editable: !options.value.document?.readOnly,
   autofocus: options.value.document?.autofocus,
-  content: contentTransform(options.value.document?.content),
+  // When collaborating, the Y.Doc is the source of truth. Passing `content`
+  // here would race the initial sync and duplicate the document for everyone
+  // already in the room — initial content is seeded after sync instead.
+  ...(collaboration.enabled
+    ? {}
+    : { content: contentTransform(options.value.document?.content) }),
   enableInputRules: inputAndPasteRules(options),
   enablePasteRules: inputAndPasteRules(options),
   editorProps: {
@@ -141,7 +155,11 @@ const editorInstance = new Editor({
     }
   },
   onUpdate({ editor }) {
-    addHistory(historyRecords, 'editor', editor?.state?.history$)
+    addHistory(
+      historyRecords,
+      'editor',
+      getEditorHistoryState(editor, collaboration.enabled),
+    )
     scheduleSyncDocumentContent()
   },
   onBlur() {
@@ -159,6 +177,27 @@ watch(
   { immediate: true, deep: true },
 )
 
+// Only the first client into a brand-new room writes the initial content —
+// otherwise every joining client would append the document again. The second
+// guard covers the case where the room is new to Yjs but the user already
+// typed something before the connection came up.
+let stopCollaborationSeed = null
+const seedCollaborationContent = () => {
+  if (!isCollaborationRoomPristine(collaboration.document)) {
+    return
+  }
+  if (!editorInstance.isEmpty) {
+    return
+  }
+  const content = contentTransform(options.value.document?.content)
+  if (!content) {
+    return
+  }
+  editorInstance.commands.setContent(content, {
+    parseOptions: options.value.document?.parseOptions,
+  })
+}
+
 onMounted(() => {
   const { disableExtensions, cdnUrl } = options.value
   const has = (name) => !disableExtensions.includes(name)
@@ -172,6 +211,14 @@ onMounted(() => {
   window.addEventListener('beforeunload', flushSyncDocumentContent)
   window.addEventListener('pagehide', flushSyncDocumentContent)
   document.addEventListener('visibilitychange', flushSyncDocumentContent)
+  if (collaboration.enabled && collaboration.autoSeed) {
+    stopCollaborationSeed = onCollaborationSynced(
+      collaboration.provider,
+      () => {
+        seedCollaborationContent()
+      },
+    )
+  }
 })
 
 // 销毁编辑器实例
@@ -179,7 +226,10 @@ onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', flushSyncDocumentContent)
   window.removeEventListener('pagehide', flushSyncDocumentContent)
   document.removeEventListener('visibilitychange', flushSyncDocumentContent)
+  stopCollaborationSeed?.()
   flushSyncDocumentContent()
+  // The Y.Doc and provider belong to the embedder, so they are deliberately
+  // left alive here — only the editor binding goes away.
   editorInstance.unmount()
 })
 </script>

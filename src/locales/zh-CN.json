@@ -839,6 +839,19 @@
     "loading": "正在查询",
     "noResult": "没有找到匹配结果"
   },
+  "collaboration": {
+    "alone": "当前只有你在编辑",
+    "anonymous": "匿名用户",
+    "others": "同时在编辑",
+    "status": {
+      "connecting": "正在连接协同文档…",
+      "connected": "已连接协同文档",
+      "disconnected": "连接已断开，正在重连…",
+      "synced": "协同文档已是最新",
+      "error": "无法连接协同文档",
+      "auth-failed": "没有访问该协同文档的权限"
+    }
+  },
   "save": {
     "text": "保存文档",
     "saved": "文档已保存",

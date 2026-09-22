@@ -148,6 +148,7 @@
       </t-button>
     </div>
     <div class="umo-status-bar-right">
+      <statusbar-collaborators />
       <tooltip
         :content="`${fullscreen?.isFullscreen ? t('fullscreen.disable') : t('fullscreen.title')} (${getShortcut('Ctrl+F11')})`"
       >

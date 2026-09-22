@@ -838,3 +838,53 @@
     }
   }
 }
+/* 协同编辑：远程用户光标与选区 */
+.umo-editor {
+  .collaboration-carets__caret {
+    position: relative;
+    margin-left: -1px;
+    margin-right: -1px;
+    border-left: 1px solid;
+    border-right: 1px solid;
+    word-break: normal;
+    pointer-events: none;
+  }
+
+  .collaboration-carets__label {
+    position: absolute;
+    top: -1.4em;
+    left: -1px;
+    max-width: 160px;
+    padding: 0.1rem 0.3rem;
+    border-radius: 3px 3px 3px 0;
+    color: #fff;
+    font-size: 12px;
+    font-style: normal;
+    font-weight: 600;
+    line-height: normal;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    user-select: none;
+    /* Labels only surface on hover so a busy room does not bury the text. */
+    opacity: 0;
+    transition: opacity 0.2s ease;
+  }
+
+  .collaboration-carets__caret:hover .collaboration-carets__label,
+  &:hover .collaboration-carets__label {
+    opacity: 1;
+  }
+
+  .collaboration-carets__selection {
+    padding-top: 2px;
+    padding-bottom: 2px;
+    mix-blend-mode: multiply;
+  }
+}
+
+[theme-mode='dark'] {
+  .umo-editor .collaboration-carets__selection {
+    mix-blend-mode: screen;
+  }
+}

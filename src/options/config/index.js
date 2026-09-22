@@ -175,6 +175,24 @@ export default {
   },
   user: {},
   users: [],
+  // Real-time collaboration. The editor never opens a connection itself: the
+  // embedder supplies an already-created Y.Doc (and, for carets, a provider),
+  // so any y-provider works. `src/utils/collaboration.js` ships a Hocuspocus
+  // helper for embedders that just want to point at a room.
+  collaboration: {
+    enabled: false,
+    // Y.Doc instance — required for collaboration to actually engage.
+    document: null,
+    // Any y-provider with an `awareness` property; needed for remote carets.
+    provider: null,
+    // Y.XmlFragment name, so several editors can share one Y.Doc.
+    field: 'default',
+    showCarets: true,
+    // Write `document.content` into the room when it is still empty.
+    autoSeed: true,
+    // Awareness identity; falls back to the `user` option.
+    user: null,
+  },
   // When left as null, mention suggestions only match the local users list.
   onMentionSearch: null,
   extensions: [],

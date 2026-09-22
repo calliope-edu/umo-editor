@@ -841,6 +841,19 @@
     "loading": "Wird gesucht",
     "noResult": "Keine Ergebnisse"
   },
+  "collaboration": {
+    "alone": "Sie sind allein im Dokument",
+    "anonymous": "Anonym",
+    "others": "Bearbeiten ebenfalls",
+    "status": {
+      "connecting": "Verbindung zum gemeinsamen Dokument wird hergestellt…",
+      "connected": "Mit dem gemeinsamen Dokument verbunden",
+      "disconnected": "Verbindung getrennt – es wird neu verbunden…",
+      "synced": "Gemeinsames Dokument ist aktuell",
+      "error": "Verbindung zum gemeinsamen Dokument fehlgeschlagen",
+      "auth-failed": "Keine Berechtigung für dieses gemeinsame Dokument"
+    }
+  },
   "save": {
     "text": "Speichern",
     "saved": "Gespeichert",

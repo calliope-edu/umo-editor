@@ -680,6 +680,68 @@ export default new ObjectSchema({
     },
     required: false,
   },
+  collaboration: {
+    required: false,
+    merge: 'replace',
+    validate: 'object',
+    schema: {
+      enabled: {
+        merge: 'replace',
+        validate: 'boolean',
+        required: false,
+      },
+      document: {
+        merge: 'replace',
+        validate(value) {
+          // Duck-typed instead of `instanceof Y.Doc` so an embedder bundling
+          // its own copy of yjs is not rejected.
+          if (value !== null && !isFunction(value?.getXmlFragment)) {
+            throw new Error(
+              'Key "collaboration": Key "document" must be a Y.Doc instance.',
+            )
+          }
+        },
+        required: false,
+      },
+      provider: {
+        merge: 'replace',
+        validate(value) {
+          if (value !== null && !isRecord(value) && !isFunction(value?.on)) {
+            throw new Error(
+              'Key "collaboration": Key "provider" must be a Yjs provider instance.',
+            )
+          }
+        },
+        required: false,
+      },
+      field: {
+        merge: 'replace',
+        validate: 'string!',
+        required: false,
+      },
+      showCarets: {
+        merge: 'replace',
+        validate: 'boolean',
+        required: false,
+      },
+      autoSeed: {
+        merge: 'replace',
+        validate: 'boolean',
+        required: false,
+      },
+      user: {
+        merge: 'replace',
+        validate(value) {
+          if (value !== null && !isRecord(value)) {
+            throw new Error(
+              'Key "collaboration": Key "user" must be an object.',
+            )
+          }
+        },
+        required: false,
+      },
+    },
+  },
   onMentionSearch: {
     merge: 'replace',
     validate(value) {
