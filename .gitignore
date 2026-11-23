@@ -34,8 +34,8 @@ vite.config.js.timestamp*
 types/imports.d.ts
 types/components.d.ts
 
-# Lock files
-package-lock.json
+# Lock files (npm's package-lock.json is committed: the calliope-build
+# workflow installs with `npm ci`)
 yarn.lock
 pnpm-lock.yaml
 
