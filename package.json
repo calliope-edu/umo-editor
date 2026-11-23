@@ -50,7 +50,8 @@
   "scripts": {
     "build": "vite build",
     "build:site": "vite build --mode site",
-    "build:campus": "vite build --mode site",
+    "build:campus": "vite build --mode site && node bin/copy-external.js",
+    "build-info": "node bin/build-info.js",
     "dev": "vite --port 9000 --open --force",
     "dev:campus": "vite --host 127.0.0.1 --port 4174 --strictPort",
     "format": "oxfmt --write .",
@@ -97,7 +98,6 @@
     "@tiptap/vue-3": "3.20.0",
     "@tiptap/y-tiptap": "3.0.2",
     "@tool-belt/type-predicates": "1.4.1",
-    "@umoteam/editor-external": "10.1.0",
     "@vueuse/core": "14.2.1",
     "cropperjs": "^2.1.1",
     "dom-to-image-more": "3.7.2",
@@ -120,6 +120,7 @@
     "yjs": "13.6.29"
   },
   "devDependencies": {
+    "@umoteam/editor-external": "11.0.0",
     "@vitejs/plugin-vue": "^6.0.4",
     "@vue-macros/reactivity-transform": "^3.1.2",
     "esbuild": "^0.28.1",

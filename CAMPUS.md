@@ -33,19 +33,26 @@ In the `calliope-dev` monorepo this is the `umo` component
 (`calliope-dev run umo`, or part of `run all`), and campus points at it via
 `PUBLIC_UMO_BASE_URL=http://127.0.0.1:4174`.
 
-## Deploy (Cloudflare Pages)
+## Build and deploy
 
-```bash
-npm run build:campus   # → dist/ (base '/')
-```
+Calliope Campus serves this editor itself, on its own origin under
+`/editors/umo/`. The `calliope-build` workflow builds it from `calliope-main`
+(`UMO_BASE=/editors/umo/ npm run build:campus`) and pushes the build to a
+build branch: a tag `calliope-vX.Y.Z` onto `build-live`, which Campus pins as
+its submodule `editors/umo`, every push onto `build-dev` (umo-dev.calliope.cc,
+for campus-dev). Branch rules in `CLAUDE.md`, the build info in
+`docs/build-info.md`.
 
-- **Build command:** `npm run build:campus`
-- **Build output directory:** `dist`
-- **Package manager:** npm (Cloudflare's default here — no lockfile is committed)
+`build:campus` is the upstream `--mode site` build (base `UMO_BASE`, default
+`/`) plus `bin/copy-external.js`, which puts the editor's libraries (KaTeX,
+Mermaid, ECharts, …) from the pinned `@umoteam/editor-external` into
+`dist/external/`; a production build loads them from there, the dev server
+from unpkg.
 
-`build:campus` is the upstream `--mode site` build (base `/`), so `index.html`
-lands at the site root. Set the resulting URL as the `umo` entry in the campus
-`src/lib/stores/editorUrls.ts` (or per-environment `PUBLIC_UMO_BASE_URL`).
+The older Cloudflare Pages project `umo-editor.pages.dev`, set up by hand
+before this scheme and still on a build without the collaboration code, is
+what Campus frames where it does not serve the editor itself (Pages previews,
+`pnpm dev`).
 
 ## Campus ⇄ iframe protocol
 

@@ -1,0 +1,8 @@
+{
+	"setup": "npm ci --ignore-scripts --no-audit --no-fund",
+	"checks": ["npm run build:campus"],
+	"language": "en",
+	"app": {
+		"run": "A Vue app with no page of its own: Calliope Campus frames it as its text editor and drives it by postMessage (CAMPUS.md). Start the dev server in the background with `npx vite --host 127.0.0.1 --port <port> --strictPort`, taking a free port from 4180 upwards (4174 is the default of `npm run dev:campus` and often taken by another workspace). Opened on its own it stays blank until a host sends `umo:init`; to see it, run Calliope Campus from a calliope-campus workspace as its settings say, turn on debug mode and set the UMO editor URL in the room settings to `http://127.0.0.1:<port>`, then open a text program. Stop it by its PID (`netstat -ano | findstr :<port>`, then `taskkill /PID <pid> /T /F`), never by name: other workspaces run their own."
+	}
+}

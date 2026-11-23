@@ -62,6 +62,15 @@ const instanceId =
   new URLSearchParams(window.location.search).get('instance') || 'default'
 const hasReceivedInit = ref(false)
 
+// The editor's lazily loaded libraries (KaTeX, Mermaid, ECharts, …). A build
+// carries its own copy of the pinned @umoteam/editor-external under
+// `external/` (bin/copy-external.js): Campus serves the build on its own
+// origin, where a script from a CDN would run with Campus's rights. The dev
+// server has no such copy and takes the same version from unpkg.
+const EXTERNAL_URL = import.meta.env.PROD
+  ? `${import.meta.env.BASE_URL}external`
+  : 'https://unpkg.com/@umoteam/editor-external@11.0.0'
+
 const options = ref(createDefaultOptions())
 
 // Shared-document (coop) state. Deliberately outside `options`: only the
@@ -74,6 +83,85 @@ let coopConfig = null
 let coopToken = ''
 let coopTokenIssuedAt = 0
 let coopTokenWaiters = []
+
+const editorRenderKey = computed(() => {
+  const disabled = Array.isArray(options.value.disableExtensions)
+    ? [...options.value.disableExtensions].sort().join(',')
+    : ''
+
+  return [
+    options.value.editorKey || 'calliope-campus-umo',
+    options.value.locale || 'en-US',
+    disabled,
+    // A new shared document means a new Y.Doc, and the editor binds its Y.Doc
+    // once at construction, so a document switch has to remount the editor.
+    coopDocName.value || '',
+  ].join('::')
+})
+
+function createDefaultOptions() {
+  return {
+    editorKey: 'calliope-campus-umo',
+    locale: 'en-US',
+    height: '100%',
+    fullscreenZIndex: 30,
+    toolbar: {
+      showSaveLabel: false,
+    },
+    disableExtensions: [],
+    page: {
+      layouts: ['page', 'web'],
+      showBreakMarks: false,
+      showToc: false,
+    },
+    document: {
+      title: 'Untitled',
+      content: '<p></p>',
+      readOnly: false,
+      autofocus: false,
+      enableMarkdown: true,
+      enableBubbleMenu: true,
+      enableBlockMenu: true,
+      autoSave: {
+        enabled: false,
+      },
+    },
+    cdnUrl: EXTERNAL_URL,
+    shareUrl: window.location.origin,
+    user: {
+      id: 'calliope-campus',
+      label: 'Calliope Campus',
+    },
+    collaboration: {
+      enabled: false,
+      document: null,
+      provider: null,
+    },
+    // The editor emits `saved` once this resolves; handleSaved posts it.
+    async onSave() {
+      return true
+    },
+    async onFileUpload(file) {
+      if (!file) {
+        throw new Error('No file found to upload')
+      }
+
+      return {
+        id: crypto.randomUUID(),
+        url: file.url || URL.createObjectURL(file),
+        name: file.name,
+        type: file.type,
+        size: file.size,
+      }
+    },
+    onFileDelete(id, url) {
+      if (typeof url === 'string' && url.startsWith('blob:')) {
+        URL.revokeObjectURL(url)
+      }
+      console.debug('Deleted file from Umo editor', id, url)
+    },
+  }
+}
 
 // The token route mints one-hour tokens (HOCO_TOKEN_TTL_MS). Ask for a new one
 // well before that so a reconnect never races the expiry.
@@ -521,6 +609,13 @@ function handleSaved() {
 }
 
 onMounted(() => {
+  // UMO runs only inside Campus and has no menu of its own for a version
+  // line; its version is BUILD.json next to the build and this one line
+  // (docs/build-info.md).
+  const build = __BUILD_INFO__
+  console.info(
+    `[umo] ${build.channel} ${build.version} · ${build.commit.slice(0, 7)} (built ${build.builtAt})`,
+  )
   window.addEventListener('message', handleMessage)
   // Never let a coalesced change die with the tab.
   window.addEventListener('pagehide', flushPendingChange)

@@ -7,8 +7,14 @@ import VueMacros from 'unplugin-vue-macros/vite'
 import { defineConfig } from 'vite'
 import { createSvgIconsPlugin } from 'vite-plugin-svg-icons'
 
+import { buildInfo } from './bin/build-info.js'
 import pkg from './package.json'
 import copyright from './src/utils/copyright'
+
+// The path the Campus build is served under. Calliope Campus serves the editor
+// itself at /editors/umo/ (the calliope-build workflow sets UMO_BASE so);
+// without it the build is for a site root, as `npm run dev:campus` is.
+const siteBase = process.env.UMO_BASE || '/'
 
 // Plugin configurations
 const vuePlugins = {
@@ -111,7 +117,11 @@ export default defineConfig(({ mode }) => {
   const isSiteBuild = mode === 'site'
 
   return {
-    base: isSiteBuild ? '/' : '/umo-editor',
+    base: isSiteBuild ? siteBase : '/umo-editor',
+    define: {
+      // The build's version, as BUILD.json holds it (docs/build-info.md).
+      __BUILD_INFO__: JSON.stringify(buildInfo()),
+    },
     plugins: [ReactivityTransform(), ...Object.values(vuePlugins)],
     css: cssConfig,
     build: getBuildConfig({ mode }),
