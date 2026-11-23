@@ -53,7 +53,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          # Node 24 brings npm 11, which wrote package-lock.json; npm 10 reads it
+          # as out of sync with package.json and `npm ci` refuses it.
+          node-version: 24
           cache: npm
 
       # npm, not pnpm: the editor imports a transitive dayjs that pnpm's strict
